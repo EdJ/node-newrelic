@@ -1,3 +1,4 @@
+
 'use strict';
 
 var path         = require('path')
@@ -483,14 +484,77 @@ describe("RemoteMethod", function () {
       expect(parsed.pathname.indexOf('/agent_listener/invoke_raw_method')).equal(0);
     });
 
-    describe("when proxy is configured", function () {
+    describe("when an HTTPS proxy is configured", function () {
+      var nock;
+      before(function () {
+        // order dependency: requiring nock at the top of the file breaks other tests
+        nock = require('nock');
+        nock.disableNetConnect();
+      });
+
+      after(function () {
+        nock.enableNetConnect();
+      });
+
+      it("should not attach the proxy information during URL canonicalization", function () {
+        var config = {
+          proxy_host : 'localhost',
+          proxy_port : '8765',
+          host       : 'collector.newrelic.com',
+          port       : '80',
+          run_id     : 12,
+          ssl        : true
+        };
+        var method = new RemoteMethod('test', config);
+
+        var expected = '/agent_listener/invoke_raw_method' +
+                       '?marshal_format=json&protocol_version=12&' +
+                       'license_key=&method=test&run_id=12';
+        expect(method._path()).equal(expected);
+      });
+
+      it("should connect a TLS tunnel via the proxy to the remote host", function (done) {
+        var runId = 12
+          , config = {
+          proxy_host : 'localhost',
+          proxy_port : '8765',
+          host       : 'collector.newrelic.com',
+          port       : '80',
+          run_id     : runId,
+          ssl        : true
+        };
+
+        var proxyConnect = nock('http://localhost:8675')
+                        .intercept('*', 'CONNECT')
+                        .reply(200);
+
+        var sendMetrics = nock('https://collector.newrelic.com:80')
+                        .post(generate('metric_data', runId))
+                        .reply(200, {return_value : []});
+
+        nock.recorder.rec();
+
+        var method = new RemoteMethod('metric_data', config);
+
+        method._post('[]', function () {
+          console.log(nock.recorder.play());
+          expect(proxyConnect.isDone()).equal(true);
+          expect(sendMetrics.isDone()).equal(true);
+
+          done();
+        });
+      });
+    });
+
+    describe("when an HTTP proxy is configured", function () {
       it("should attach proxy host and port during URL canonicalization", function () {
         var config = {
           proxy_host : 'localhost',
           proxy_port : '8765',
           host       : 'collector.newrelic.com',
           port       : '80',
-          run_id     : 12
+          run_id     : 12,
+          use_ssl    : false
         };
         var method = new RemoteMethod('test', config);
 

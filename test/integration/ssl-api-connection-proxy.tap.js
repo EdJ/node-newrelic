@@ -1,25 +1,31 @@
 'use strict';
 
 var path         = require('path')
+  , fs           = require('fs')
   , test         = require('tap').test
+  , proxy        = require('http-proxy')
   , configurator = require(path.join(__dirname, '..', '..', 'lib', 'config'))
   , Agent        = require(path.join(__dirname, '..', '..', 'lib', 'agent'))
   , CollectorAPI = require(path.join(__dirname, '..', '..', 'lib', 'collector', 'api.js'))
-  , proxy        = require('http-proxy')
   ;
 
 test("Collector API should connect to staging-collector.newrelic.com", function (t) {
   var remoteHost = 'staging-collector.newrelic.com'
-    , proxyPort = 9091
-    , localProxy = proxy.createProxyServer({
-        'target': 'http://' + remoteHost
-    })
-    , config = configurator.initialize({
+      , proxyPort = 9091
+      , localProxy = proxy.createProxyServer({
+          'target': 'https://' + remoteHost,
+          'ssl'   : {
+              'key'   : fs.readFileSync('test/integration/certs/server-key.pem', 'utf-8'),
+              'cert'  : fs.readFileSync('test/integration/certs/server-cert.pem', 'utf-8')
+          },
+          'secure': true
+      })
+      , config = configurator.initialize({
         'app_name'    : 'node.js Tests',
         'license_key' : 'd67afc830dab717fd163bfcb0b8b88423e9a1a3b',
         'host'        : remoteHost,
-        'port'        : 80,
-        'ssl'         : false,
+        'port'        : 443,
+        'ssl'         : true,
         'proxy_host'  : 'localhost',
         'proxy_port'  : proxyPort,
         'logging'     : {
