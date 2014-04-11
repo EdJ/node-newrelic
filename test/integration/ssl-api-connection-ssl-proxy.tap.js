@@ -14,7 +14,15 @@ test("Collector API should connect to staging-collector.newrelic.com", function 
 
   var remoteHost = 'staging-collector.newrelic.com'
       , proxyPort = 9091
-      , localProxy = createProxy()
+      , proxyKey  = fs.readFileSync('test/integration/certs/server-key.pem', 'utf-8')
+      , proxyCert = fs.readFileSync('test/integration/certs/server-cert.pem', 'utf-8')
+      , proxyCa   = fs.readFileSync('test/integration/certs/server-csr.pem', 'utf-8')
+      , localProxy = createProxy({
+          'ssl'   : {
+              'key'   : proxyKey,
+              'cert'  : proxyCert
+          }
+      })
       , config = configurator.initialize({
         'app_name'    : 'node.js Tests',
         'license_key' : 'd67afc830dab717fd163bfcb0b8b88423e9a1a3b',
@@ -23,7 +31,10 @@ test("Collector API should connect to staging-collector.newrelic.com", function 
         'ssl'         : true,
         'proxy_host'  : 'localhost',
         'proxy_port'  : proxyPort,
-        'proxy_ssl'   : false,
+        'proxy_ssl'   : true,
+        'proxy_key'   : proxyKey,
+        'proxy_cert'  : proxyCert,
+        'proxy_ca'    : proxyCa,
         'logging'     : {
           'level' : 'trace'
         }
