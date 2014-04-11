@@ -513,35 +513,61 @@ describe("RemoteMethod", function () {
         expect(method._path()).equal(expected);
       });
 
-      it("should connect a TLS tunnel via the proxy to the remote host", function (done) {
-        var runId = 12
+
+      describe("uses the tunneling proxy", function () {
+        // There are a lot of hoops to jump through here.
+        // Unfortunately nock doesn't have the ability to identify the usage of an agent,
+        // so we have to assume the tunnel is setup correctly.
+        // This should be checked properly in the integration tests.
+        var calledProxyProvider = false
+          , HttpAgents = require(path.join(__dirname, '..', 'lib',
+                                   'collector', 'http-agents.js'))
+          , originalHttpsProxy = HttpAgents.https_proxy
+          , runId = 12
           , config = {
-          proxy_host : 'localhost',
-          proxy_port : '8765',
-          host       : 'collector.newrelic.com',
-          port       : '80',
-          run_id     : runId,
-          ssl        : true
-        };
+            proxy_host : 'localhost',
+            proxy_port : '8765',
+            host       : 'collector.newrelic.com',
+            port       : '80',
+            run_id     : runId,
+            ssl        : true,
+            license_key: 'license key here' // This is hard-coded in the generate() method
+          };
 
-        var proxyConnect = nock('http://localhost:8675')
-                        .intercept('*', 'CONNECT')
-                        .reply(200);
+        before(function () {
+          HttpAgents.https_proxy = function (proxyConfig) {
+            expect(proxyConfig.proxy_host).equal(config.proxy_host);
+            expect(proxyConfig.proxy_port).equal(config.proxy_port);
 
-        var sendMetrics = nock('https://collector.newrelic.com:80')
-                        .post(generate('metric_data', runId))
-                        .reply(200, {return_value : []});
+            calledProxyProvider = true;
 
-        nock.recorder.rec();
+            return {
+                request: require('https').request
+            };
+          };
 
-        var method = new RemoteMethod('metric_data', config);
+        });
 
-        method._post('[]', function () {
-          console.log(nock.recorder.play());
-          expect(proxyConnect.isDone()).equal(true);
-          expect(sendMetrics.isDone()).equal(true);
+        after(function () {
+          calledProxyProvider = false;
+          HttpAgents.https_proxy = originalHttpsProxy;
+        });
 
-          done();
+        it("should connect a TLS tunnel via the proxy to the remote host", function (done) {
+          // Although this appears to be an HTTP request to nock, it's actually HTTPS.
+          // Unfortunately nock doesn't seem to understand the tunneling agent.
+          var sendMetrics = nock('https://collector.newrelic.com:80')
+                          .post(generate('metric_data', runId))
+                          .reply(200, {return_value : []});
+
+          var method = new RemoteMethod('metric_data', config);
+
+          method._post('[]', function () {
+            expect(sendMetrics.isDone()).equal(true);
+            expect(calledProxyProvider).equal(true);
+
+            done();
+          });
         });
       });
     });
